@@ -55,6 +55,43 @@ def export_colored_mesh_ply(V, F, FL, filename='segmented_mesh.ply'):
     mesh.export(filename)
     print(f"Exported mesh to {filename}")
 
+#new
+def export_clusters_as_ply(V, F, FL, out_dir, filename_prefix='cluster'):
+    """
+    Export each segmentation cluster (label) as a separate PLY file.
+
+    Parameters:
+    - V (np.ndarray): Vertices array (N, 3)
+    - F (np.ndarray): Faces array (M, 3)
+    - FL (np.ndarray): Face labels (M,)
+    - filename_prefix (str): Prefix for output files
+    """
+    assert V.shape[1] == 3
+    assert F.shape[1] == 3
+    assert F.shape[0] == FL.shape[0]
+
+    FL = np.squeeze(FL)
+    unique_labels = np.unique(FL)
+
+    for label in unique_labels:
+        # --- 該当ラベルのフェイスだけ抽出 ---
+        face_idx = np.where(FL == label)[0]
+        F_sub = F[face_idx]
+
+        # --- 使われている頂点を抽出 ---
+        used_vertices = np.unique(F_sub.flatten())
+        V_sub = V[used_vertices]
+
+        # --- 頂点番号を 0 ～ にリマップ ---
+        remap = {old: new for new, old in enumerate(used_vertices)}
+        F_sub_remapped = np.vectorize(lambda x: remap[x])(F_sub)
+
+        # --- PLY 書き出し ---
+        mesh = trimesh.Trimesh(vertices=V_sub, faces=F_sub_remapped)
+        outname = f"{filename_prefix}_{label}.ply"
+        mesh.export(outname)
+        print(f"Exported cluster {label} to {outname}")
+
 def export_pointcloud_with_labels_to_ply(V, VL, filename='colored_pointcloud.ply'):
     """
     Export a labeled point cloud to a PLY file with vertex colors.
@@ -684,7 +721,12 @@ def solve_clustering(input_fname, uid, view_id, save_dir="test_results1", out_re
                     fname_mesh = os.path.join(out_render_fol, "ply", str(uid) + "_" + str(view_id) + "_" + str(num_cluster).zfill(2) + ".ply")
                     export_colored_mesh_ply(V, F, pred_labels, filename=fname_mesh)
 
+                    #new
+                    cluster_dir = os.path.join(out_render_fol, "ply", f"{uid}_{view_id}_{str(num_cluster).zfill(2)}_clusters")
+                    os.makedirs(cluster_dir, exist_ok=True)
+                    export_clusters_as_ply(V, F, pred_labels,out_dir=cluster_dir,filename_prefix=f"{uid}_{view_id}_c{num_cluster}")
             
+
             else:
                 if export_mesh:
                     fname_pc = os.path.join(out_render_fol, "ply", str(uid) + "_" + str(view_id) + "_" + str(num_cluster).zfill(2) + ".ply")
@@ -729,6 +771,12 @@ def solve_clustering(input_fname, uid, view_id, save_dir="test_results1", out_re
             if export_mesh :
                 fname_mesh = os.path.join(out_render_fol, "ply", str(uid) + "_" + str(view_id) + "_" + str(max_num_clusters - n_cluster).zfill(2) + ".ply")
                 export_colored_mesh_ply(V, F, FL, filename=fname_mesh)
+
+                #new
+                cluster_dir = os.path.join(out_render_fol, "ply",f"{uid}_{view_id}_{str(max_num_clusters - n_cluster).zfill(2)}_clusters")
+                os.makedirs(cluster_dir, exist_ok=True)
+                export_clusters_as_ply(V, F, FL, out_dir=cluster_dir, filename_prefix=f"{uid}_{view_id}_agglo_{max_num_clusters - n_cluster}" )
+
 
             fname_clustering = os.path.join(out_render_fol, "cluster_out", str(uid) + "_" + str(view_id) + "_" + str(max_num_clusters - n_cluster).zfill(2))
             np.save(fname_clustering, FL)
