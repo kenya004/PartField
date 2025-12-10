@@ -70,6 +70,8 @@ def export_clusters_as_ply(V, F, FL, out_dir, filename_prefix='cluster'):
     assert F.shape[1] == 3
     assert F.shape[0] == FL.shape[0]
 
+    os.makedirs(out_dir, exist_ok=True)
+
     FL = np.squeeze(FL)
     unique_labels = np.unique(FL)
 
@@ -88,7 +90,7 @@ def export_clusters_as_ply(V, F, FL, out_dir, filename_prefix='cluster'):
 
         # --- PLY 書き出し ---
         mesh = trimesh.Trimesh(vertices=V_sub, faces=F_sub_remapped)
-        outname = f"{filename_prefix}_{label}.ply"
+        outname = os.path.join(out_dir, f"{filename_prefix}_{label}.ply")
         mesh.export(outname)
         print(f"Exported cluster {label} to {outname}")
 
