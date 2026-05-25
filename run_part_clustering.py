@@ -681,6 +681,93 @@ def solve_clustering(input_fname, uid, view_id, save_dir="test_results1", out_re
     if not is_pc:
         input_fname = f'{save_dir}/input_{uid}_{view_id}.ply'
         mesh = load_mesh_util(input_fname)
+    else:
+        pc = load_ply_to_numpy(input_fname)
+
+    ### Load inferred PartField features
+    try:
+        point_feat = np.load(f'{save_dir}/part_feat_{uid}_{view_id}.npy')
+    except:
+        try:
+            point_feat = np.load(f'{save_dir}/part_feat_{uid}_{view_id}_batch.npy')
+        except:
+            print("\npointfeat loading error. skipping...")
+            return
+
+    point_feat = point_feat / np.linalg.norm(point_feat, axis=-1, keepdims=True)
+
+    
+    if not use_agglo:
+        # K-Means
+        num_cluster = max_num_clusters
+        clustering = KMeans(n_clusters=num_cluster, random_state=0).fit(point_feat)
+        labels = clustering.labels_
+        
+        pred_labels = np.zeros((len(labels), 1))
+        for i, label in enumerate(np.unique(labels)):
+            pred_labels[labels == label] = i
+
+        fname_clustering = os.path.join(out_render_fol, "cluster_out", str(uid) + "_" + str(view_id) + "_" + str(num_cluster).zfill(2))
+        np.save(fname_clustering, pred_labels)
+
+        if not is_pc:
+            V, F = mesh.vertices, mesh.faces
+            if export_mesh:
+                fname_mesh = os.path.join(out_render_fol, "ply", str(uid) + "_" + str(view_id) + "_" + str(num_cluster).zfill(2) + ".ply")
+                export_colored_mesh_ply(V, F, pred_labels, filename=fname_mesh)
+                cluster_dir = os.path.join(out_render_fol, "ply", f"{uid}_{view_id}_{str(num_cluster).zfill(2)}_clusters")
+                os.makedirs(cluster_dir, exist_ok=True)
+                export_clusters_as_ply(V, F, pred_labels, out_dir=cluster_dir, filename_prefix=f"{uid}_{view_id}_c{num_cluster}")
+        else:
+            if export_mesh:
+                fname_pc = os.path.join(out_render_fol, "ply", str(uid) + "_" + str(view_id) + "_" + str(num_cluster).zfill(2) + ".ply")
+                export_pointcloud_with_labels_to_ply(pc, pred_labels, filename=fname_pc)
+        
+    else:
+        # Agglomerative Clustering
+        if is_pc:
+            print("Agglomerative clustering only for mesh inputs.")
+            return
+
+        if option == 0:
+            adj_matrix = construct_face_adjacency_matrix_naive(mesh.faces)
+        elif option == 1:
+            adj_matrix = construct_face_adjacency_matrix_facemst(mesh.faces, mesh.vertices, with_knn=with_knn)
+        else:
+            adj_matrix = construct_face_adjacency_matrix_ccmst(mesh.faces, mesh.vertices, with_knn=with_knn)
+
+        clustering = AgglomerativeClustering(connectivity=adj_matrix, n_clusters=1).fit(point_feat)
+        hierarchical_labels = hierarchical_clustering_labels(clustering.children_, point_feat.shape[0], max_cluster=max_num_clusters)
+
+        
+        n_cluster_idx = 0 
+        current_cluster_count = max_num_clusters
+        
+        print(f"Processing target cluster count: {current_cluster_count}")
+     
+        labels = np.array(hierarchical_labels[n_cluster_idx]) 
+        
+        V, F = mesh.vertices, mesh.faces
+        if export_mesh:
+       
+            fname_mesh = os.path.join(out_render_fol, "ply", str(uid) + "_" + str(view_id) + "_" + str(current_cluster_count).zfill(2) + ".ply")
+            export_colored_mesh_ply(V, F, labels, filename=fname_mesh)
+
+           
+            cluster_dir = os.path.join(out_render_fol, "ply", f"{uid}_{view_id}_{str(current_cluster_count).zfill(2)}_clusters")
+            os.makedirs(cluster_dir, exist_ok=True)
+            export_clusters_as_ply(V, F, labels, out_dir=cluster_dir, filename_prefix=f"{uid}_{view_id}_agglo_{current_cluster_count}")
+
+        fname_clustering = os.path.join(out_render_fol, "cluster_out", str(uid) + "_" + str(view_id) + "_" + str(current_cluster_count).zfill(2))
+        np.save(fname_clustering, labels)
+
+""""
+def solve_clustering(input_fname, uid, view_id, save_dir="test_results1", out_render_fol= "test_render_clustering", use_agglo=False, max_num_clusters=18, is_pc=False, option=1, with_knn=True, export_mesh=True):
+    print(uid, view_id)
+    
+    if not is_pc:
+        input_fname = f'{save_dir}/input_{uid}_{view_id}.ply'
+        mesh = load_mesh_util(input_fname)
 
     else:
         pc = load_ply_to_numpy(input_fname)
@@ -782,7 +869,7 @@ def solve_clustering(input_fname, uid, view_id, save_dir="test_results1", out_re
 
             fname_clustering = os.path.join(out_render_fol, "cluster_out", str(uid) + "_" + str(view_id) + "_" + str(max_num_clusters - n_cluster).zfill(2))
             np.save(fname_clustering, FL)
-        
+ """       
         
             
 if __name__ == '__main__':
